@@ -219,6 +219,41 @@ def test_filter_message_exclude_tool_calls() -> None:
     assert messages == messages_model_copy
 
 
+def test_filter_message_exclude_invalid_tool_calls() -> None:
+    tool_call = {"name": "valid", "id": "valid-id", "args": {}, "type": "tool_call"}
+    invalid_tool_call = {
+        "name": "invalid",
+        "args": "{",
+        "id": "invalid-id",
+        "error": "parse error",
+        "type": "invalid_tool_call",
+    }
+    messages = [
+        HumanMessage("run tool"),
+        AIMessage(
+            "response",
+            tool_calls=[tool_call],
+            invalid_tool_calls=[invalid_tool_call],
+        ),
+        AIMessage("invalid only", invalid_tool_calls=[invalid_tool_call]),
+    ]
+    messages_model_copy = [message.model_copy(deep=True) for message in messages]
+
+    actual = filter_messages(messages, exclude_tool_calls=["invalid-id"])
+    assert actual == [
+        messages[0],
+        messages[1].model_copy(update={"invalid_tool_calls": []}),
+    ]
+
+    actual = filter_messages(messages, exclude_tool_calls=["valid-id", "invalid-id"])
+    assert actual == [messages[0]]
+
+    actual = filter_messages(messages, exclude_tool_calls=True)
+    assert actual == [messages[0]]
+
+    assert messages == messages_model_copy
+
+
 def test_filter_message_exclude_tool_calls_content_blocks() -> None:
     tool_calls = [
         {"name": "foo", "id": "1", "args": {}, "type": "tool_call"},

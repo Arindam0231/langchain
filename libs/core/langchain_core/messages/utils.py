@@ -897,13 +897,13 @@ def filter_messages(
         exclude_tool_calls: Tool call IDs to exclude.
             Can be one of the following:
             - `True`: All `AIMessage` objects with tool calls and all `ToolMessage`
-                objects will be excluded.
+                objects will be excluded. This also applies to invalid tool calls.
             - a sequence of tool call IDs to exclude:
                 - `ToolMessage` objects with the corresponding tool call ID will be
                     excluded.
-                - The `tool_calls` in the AIMessage will be updated to exclude
-                    matching tool calls. If all `tool_calls` are filtered from an
-                    AIMessage, the whole message is excluded.
+                - The `tool_calls` and `invalid_tool_calls` in an AIMessage will be
+                    updated to exclude matching tool calls. If all calls are filtered
+                    from an AIMessage, the whole message is excluded.
 
     Returns:
         A list of Messages that meets at least one of the `incl_*` conditions and none
@@ -962,20 +962,25 @@ def filter_messages(
             continue
 
         if exclude_tool_calls is True and (
-            (isinstance(msg, AIMessage) and msg.tool_calls)
+            (isinstance(msg, AIMessage) and (msg.tool_calls or msg.invalid_tool_calls))
             or isinstance(msg, ToolMessage)
         ):
             continue
 
         new_msg = msg
         if isinstance(exclude_tool_calls, (list, tuple, set)):
-            if isinstance(msg, AIMessage) and msg.tool_calls:
+            if isinstance(msg, AIMessage) and (msg.tool_calls or msg.invalid_tool_calls):
                 tool_calls = [
                     tool_call
                     for tool_call in msg.tool_calls
                     if tool_call["id"] not in exclude_tool_calls
                 ]
-                if not tool_calls:
+                invalid_tool_calls = [
+                    tool_call
+                    for tool_call in msg.invalid_tool_calls
+                    if tool_call["id"] not in exclude_tool_calls
+                ]
+                if not tool_calls and not invalid_tool_calls:
                     continue
 
                 content = msg.content
@@ -992,7 +997,11 @@ def filter_messages(
                     ]
 
                 new_msg = msg.model_copy(
-                    update={"tool_calls": tool_calls, "content": content}
+                    update={
+                        "tool_calls": tool_calls,
+                        "invalid_tool_calls": invalid_tool_calls,
+                        "content": content,
+                    }
                 )
             elif (
                 isinstance(msg, ToolMessage) and msg.tool_call_id in exclude_tool_calls
